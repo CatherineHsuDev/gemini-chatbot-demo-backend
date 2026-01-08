@@ -39,7 +39,11 @@ system_prompt = load_system_prompt()
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 
 # 注意：不要在 import 時 raise，避免 Render 啟動直接死掉
-ai_platform = Gemini(api_key=gemini_api_key, system_prompt=system_prompt)
+ai_platform = None
+if gemini_api_key:
+    ai_platform = Gemini(api_key=gemini_api_key, system_prompt=system_prompt)
+else:
+    print("⚠️ Warning: GEMINI_API_KEY is not set in environment variables.")
 
 class ChatRequest(BaseModel):
     prompt: str
@@ -51,8 +55,11 @@ class ChatResponse(BaseModel):
 async def chat(request: ChatRequest):
     apply_rate_limit("global_unauthenticated_user")
 
-    if not gemini_api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured")
+    if not gemini_api_key or ai_platform is None:
+        raise HTTPException(
+            status_code=500, 
+            detail="Gemini API is not configured. Please check environment variables."
+        )
 
     try:
         response_text = await run_in_threadpool(ai_platform.chat, request.prompt)
