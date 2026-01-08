@@ -1,0 +1,25 @@
+# ---- Local notes / temp ----
+note.txt
+tree.txt
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ---- Virtual environment ----
+venv/
+.env
+.env.*
+
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ---- Test / coverage ----
+.pytest_cache/
+.coverage
+htmlcov/
