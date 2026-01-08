@@ -1,76 +1,66 @@
-# src\main.py
-import os 
-from fastapi import FastAPI
+# src/main.py
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-# from .ai.gemini import Gemini
+
 from src.auth.throttling import apply_rate_limit
 from src.ai.gemini import Gemini
-from fastapi.middleware.cors import CORSMiddleware
-
-
 
 app = FastAPI()
+
+# --- CORS ---
+# 你可以先用 onrender.com + 本機，等前端正式網域出來再收斂
 origins = [
-    "http://localhost:5173",  # Vite dev server
+    "http://localhost:5173",
+    "https://gemini-chatbot-demo-frontend.onrender.com",
 ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,            # 正式環境不要用 ["*"]
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-def load_system_prompt() :
+def load_system_prompt() -> str | None:
     try:
-        with open("src/prompts/system_prompt.md", "r", encoding="utf-8") as file:
-             return file.read().strip()
+        base_dir = Path(__file__).resolve().parent  # .../src
+        prompt_path = base_dir / "prompts" / "system_prompt.md"
+        return prompt_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         return None
-    
+
 system_prompt = load_system_prompt()
 gemini_api_key = os.getenv("GEMINI_API_KEY")
 
-if not gemini_api_key:
-    raise ValueError("GEMINI_API_KEY environment variable not set.")
-
+# 注意：不要在 import 時 raise，避免 Render 啟動直接死掉
 ai_platform = Gemini(api_key=gemini_api_key, system_prompt=system_prompt)
 
 class ChatRequest(BaseModel):
     prompt: str
 
-
 class ChatResponse(BaseModel):
     response: str
-
-
-
-from fastapi import HTTPException
-# 上面 import 區塊記得多這一行
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     apply_rate_limit("global_unauthenticated_user")
-    response_text = ai_platform.chat(request.prompt)
-    return ChatResponse(response=response_text)
+
+    if not gemini_api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured")
+
     try:
         response_text = await run_in_threadpool(ai_platform.chat, request.prompt)
         return ChatResponse(response=response_text)
     except Exception as e:
-        # 先把錯誤內容印到 console，方便你在 terminal 看到
         print("Error in /chat:", repr(e))
-        # 再把錯誤訊息回傳給客戶端，暫時用來 debug
-        raise HTTPException(status_code=500, detail=str(e))
-
-
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.get("/")
 async def root():
     return {"message": "API is running!"}
-
-
-# system_prompt = load_system_prompt()
-# gemini_api_key = os.getenv("GEMINI_API_KEY")
-
-# ai_platform = Gemini(api_key=gemini_api_key, system_prompt=system_prompt)
